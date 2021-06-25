@@ -40,8 +40,8 @@ date,Host,Traceid,message
 If we run the script:
 
 ```
-go run main.go 
--csv /tmp/extract.csv
+go run main.go \
+-csv /tmp/extract.csv \
 -fieldId "Traceid" \
 -fieldTs "date" \
 -tsFormat "2006-01-02T15:04:05.999Z" \
