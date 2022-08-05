@@ -16,7 +16,7 @@
             dataTable.addColumn({type: 'date', id: 'End'});
             // @formatter:off
             dataTable.addRows([
-            {{ range $i, $e := . }}
+            {{ range $i, $e := Events }}
                 [ {{ $e.ID }}, new Date({{$e.Begin}}), new Date({{$e.End}}) ],
             {{ end }}
             ]);

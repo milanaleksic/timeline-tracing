@@ -1,3 +1,3 @@
-module github.com/milanaleksic/timeline-from-csv
+module github.com/milanaleksic/timelinefromcsv
 
-go 1.16
+go 1.18

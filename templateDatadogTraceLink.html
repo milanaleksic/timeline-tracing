@@ -1,0 +1,65 @@
+{{define "timeline"}}
+<html>
+<head>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+        google.charts.load('current', {'packages': ['timeline']});
+        google.charts.setOnLoadCallback(drawChart);
+
+        function drawChart() {
+            var container = document.getElementById('timeline');
+            var chart = new google.visualization.Timeline(container);
+            var dataTable = new google.visualization.DataTable();
+
+            dataTable.addColumn({type: 'string', id: 'Trace'});
+            dataTable.addColumn({type: 'date', id: 'Start'});
+            dataTable.addColumn({type: 'date', id: 'End'});
+            // @formatter:off
+            dataTable.addRows([
+            {{ range $i, $e := $.Events }}
+                [{v: '{{ $e.ID }}', p: {link: 'https://app.datadoghq.com/logs?query=trace_id%3A{{ $e.ID }}&from_ts={{$.MinimalTs}}'}}, new Date({{$e.Begin}}), new Date({{$e.End}}) ],
+            {{ end }}
+            ]);
+            // @formatter:on
+
+            var options = {
+                timeline: {
+                    singleColor: '#8d8',
+                    rowLabelStyle: {
+                        color: '#3399cc'
+                    }
+                },
+            };
+
+            function readyHandler() {
+                var labels = container.getElementsByTagName('text');
+                Array.prototype.forEach.call(labels, function (label) {
+                    if (label.getAttribute('fill') === options.timeline.rowLabelStyle.color) {
+                        label.addEventListener('click', clickHandler);
+                        label.setAttribute('style', 'cursor: pointer; text-decoration: underline;');
+                    }
+                });
+            }
+
+            function clickHandler(sender) {
+                var rowLabel = sender.target.textContent;
+                var dataRows = dataTable.getFilteredRows([{
+                    column: 0,
+                    value: rowLabel
+                }]);
+                if (dataRows.length > 0) {
+                    var link = dataTable.getProperty(dataRows[0], 0, 'link');
+                    window.open(link, '_blank');
+                }
+            }
+
+            google.visualization.events.addListener(chart, 'ready', readyHandler);
+            chart.draw(dataTable, options);
+        }
+    </script>
+</head>
+<body>
+<div id="timeline" style="height: 800px;"></div>
+</body>
+</html>
+{{ end }}

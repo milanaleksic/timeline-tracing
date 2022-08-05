@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"flag"
-	"html/template"
+	timeline "github.com/milanaleksic/timelinefromcsv"
 	"log"
 	"os"
 	"regexp"
@@ -103,7 +103,7 @@ func main() {
 	if *onlyExtremeCase {
 		renderTemplateOnlyExtreme(templateFile, events, maxOngoing, *outFile)
 	} else {
-		renderTemplate(templateFile, events, thresholdDuration, *outFile)
+		renderTemplateWithThreshold(templateFile, events, thresholdDuration, *outFile)
 	}
 }
 
@@ -117,9 +117,7 @@ func parseTs(rowIndex int, row []string, header map[string]int, fieldTs *string,
 }
 
 func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, maxOngoing map[string]bool, file string) {
-
-	eventsToRender := make(map[string]EventView)
-
+	eventsToRender := make(map[string]timeline.EventView)
 	for traceID, event := range events {
 		if _, ok := maxOngoing[traceID]; !ok {
 			continue
@@ -127,40 +125,17 @@ func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, ma
 		if event.Begin.IsZero() || event.End.IsZero() {
 			continue
 		}
-		eventsToRender[traceID] = EventView{
+		eventsToRender[traceID] = timeline.EventView{
 			ID:    traceID,
 			Begin: event.Begin.UnixNano() / 1000 / 1000,
 			End:   event.End.UnixNano() / 1000 / 1000,
 		}
 	}
-
-	templateTimeline := template.New("timeline")
-	t, err := templateTimeline.ParseFiles(*templateFile)
-	if err != nil {
-		log.Fatalf("Failed to parse the template file %v: err=%v", *templateFile, err)
-	}
-
-	if file == "" {
-		err = t.Execute(os.Stdout, eventsToRender)
-		if err != nil {
-			log.Fatalf("Failed to fill the template err=%v", err)
-		}
-	} else {
-		openFile, err := os.OpenFile(file, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
-		if err != nil {
-			log.Fatalf("Failed to write to the output file %v err=%v", file, err)
-		}
-		err = t.Execute(openFile, eventsToRender)
-		if err != nil {
-			log.Fatalf("Failed to fill the template err=%v", err)
-		}
-	}
+	timeline.RenderTemplateData(templateFile, eventsToRender, file)
 }
 
-func renderTemplate(templateFile *string, events map[string]Event, threshold time.Duration, file string) {
-
-	eventsToRender := make(map[string]EventView)
-
+func renderTemplateWithThreshold(templateFile *string, events map[string]Event, threshold time.Duration, file string) {
+	eventsToRender := make(map[string]timeline.EventView)
 	for traceID, event := range events {
 		if event.Begin.IsZero() || event.End.IsZero() {
 			continue
@@ -168,46 +143,19 @@ func renderTemplate(templateFile *string, events map[string]Event, threshold tim
 		if event.End.Sub(event.Begin) < threshold {
 			continue
 		}
-		eventsToRender[traceID] = EventView{
+		eventsToRender[traceID] = timeline.EventView{
 			ID:    traceID,
 			Begin: event.Begin.UnixNano() / 1000 / 1000,
 			End:   event.End.UnixNano() / 1000 / 1000,
 		}
 	}
-
-	templateTimeline := template.New("timeline")
-	t, err := templateTimeline.ParseFiles(*templateFile)
-	if err != nil {
-		log.Fatalf("Failed to parse the template file %v: err=%v", *templateFile, err)
-	}
-
-	if file == "" {
-		err = t.Execute(os.Stdout, eventsToRender)
-		if err != nil {
-			log.Fatalf("Failed to fill the template err=%v", err)
-		}
-	} else {
-		openFile, err := os.OpenFile(file, os.O_CREATE|os.O_RDWR, 0644)
-		if err != nil {
-			log.Fatalf("Failed to write to the output file %v err=%v", file, err)
-		}
-		err = t.Execute(openFile, eventsToRender)
-		if err != nil {
-			log.Fatalf("Failed to fill the template err=%v", err)
-		}
-	}
+	timeline.RenderTemplateData(templateFile, eventsToRender, file)
 }
 
 type Event struct {
 	ID    string
 	Begin time.Time
 	End   time.Time
-}
-
-type EventView struct {
-	ID    string
-	Begin int64
-	End   int64
 }
 
 func makeHeader(x []string, fieldId *string, fieldTs *string, fieldMessage *string) (header map[string]int) {
