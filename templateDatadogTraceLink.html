@@ -2,11 +2,25 @@
 <html>
 <head>
     <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        .customTooltip {
+            padding:5px 5px 5px 5px;
+            font-size: medium;
+        }
+
+    </style>
     <script type="text/javascript" >
+
+        function createCustomHTMLContent(text) {
+            return '<div class="customTooltip">' + text + '</div>';
+        }
+
         // @formatter:off
         const tableData = [
             {{ range $i, $e := $.Events -}}
-            [{v: '{{ $e.ID }}', p: {link: 'https://app.datadoghq.com/logs?query=trace_id%3A{{ $e.ID }}&from_ts={{$.MinimalTs}}'}}, new Date({{$e.Begin}}), new Date({{$e.End}}) ],
+            {{- range $j, $s := $e.Slices -}}
+            ['{{ $e.ID }}', {v: '{{ $s.Operation }}', p: {link: 'https://app.datadoghq.com/logs?query=trace_id%3A{{ $e.ID }}&from_ts={{$.MinimalTs}}'}}, createCustomHTMLContent('{{$s.Tooltip}}'), new Date({{$s.Begin}}), new Date({{$s.End}}) ],
+            {{ end }}
             {{ end }}
         ];
         // @formatter:on
@@ -25,24 +39,23 @@
         google.charts.load('current', {'packages': ['timeline']});
         google.charts.setOnLoadCallback(drawChart);
 
-        function readyHandler(container) {
+        function readyHandler(container, dataTable) {
             var labels = container.getElementsByTagName('text');
             Array.prototype.forEach.call(labels, function (label) {
                 if (label.getAttribute('fill') === rowLabelColor) {
-                    label.addEventListener('click', clickHandler);
+                    label.addEventListener('click', (sender) => clickHandler(sender.target.textContent, dataTable));
                     label.setAttribute('style', 'cursor: pointer; text-decoration: underline;');
                 }
             });
         }
 
-        function clickHandler(sender) {
-            var rowLabel = sender.target.textContent;
+        function clickHandler(rowLabel, dataTable) {
             var dataRows = dataTable.getFilteredRows([{
                 column: 0,
                 value: rowLabel
             }]);
             if (dataRows.length > 0) {
-                var link = dataTable.getProperty(dataRows[0], 0, 'link');
+                var link = dataTable.getProperty(dataRows[0], 1, 'link');
                 window.open(link, '_blank');
             }
         }
@@ -50,13 +63,15 @@
         function drawChart() {
             var container = document.getElementById('timeline');
             var chart = new google.visualization.Timeline(container);
-            google.visualization.events.addListener(chart, 'ready', (e) => readyHandler(container));
             var dataTable = new google.visualization.DataTable();
+            google.visualization.events.addListener(chart, 'ready', (e) => readyHandler(container, dataTable));
             dataTable.addColumn({type: 'string', id: 'Trace'});
+            dataTable.addColumn({type: 'string', id: 'Operation'});
+            dataTable.addColumn({type: 'string', role: 'tooltip', 'p': {'html': true}});
             dataTable.addColumn({type: 'date', id: 'Start'});
             dataTable.addColumn({type: 'date', id: 'End'});
             dataTable.addRows(tableData);
-            dataTable.sort([{column: 2, desc: false}]);
+            dataTable.sort([{column: 3, desc: false}]);
             chart.draw(dataTable, options);
         }
     </script>

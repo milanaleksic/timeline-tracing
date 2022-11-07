@@ -16,9 +16,11 @@ func RenderTemplateData(templateFile *string, eventsToRender map[string]EventVie
 
 	var minimalTs int64 = math.MaxInt64
 	for _, event := range eventsToRender {
-		begin := event.Begin
-		if begin < minimalTs {
-			minimalTs = begin
+		for _, slice := range event.Slices {
+			begin := slice.Begin
+			if begin < minimalTs {
+				minimalTs = begin
+			}
 		}
 	}
 
@@ -46,9 +48,15 @@ func RenderTemplateData(templateFile *string, eventsToRender map[string]EventVie
 }
 
 type EventView struct {
-	ID    string
-	Begin int64
-	End   int64
+	ID     string
+	Slices []SliceView
+}
+
+type SliceView struct {
+	Operation string
+	Tooltip   string
+	Begin     int64
+	End       int64
 }
 
 type TemplateData struct {

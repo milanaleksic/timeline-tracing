@@ -3,13 +3,18 @@ package main
 import (
 	"encoding/csv"
 	"flag"
+	"fmt"
 	timeline "github.com/milanaleksic/timelinefromcsv"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+)
+
+const (
+	TimeOnlyMs = "15:04:05.999"
 )
 
 func main() {
@@ -26,6 +31,7 @@ func main() {
 	templateFile := flag.String("templateFile", "template.html", "which Go template file should be used to generate output, use Golang syntax: https://golang.org/pkg/time/#ParseDuration")
 	outFile := flag.String("outFile", "output.html", "Where should the output timeline diagram be placed")
 	onlyExtremeCase := flag.Bool("onlyExtreme", true, "Expose only extreme case (when most ongoing traces, ignores threshold!)")
+	operationRegex := flag.String("operationRegex", "", "regex that should extract (as the first group) the operation name")
 	flag.Parse()
 
 	file, err := os.Open(*csvFile)
@@ -42,6 +48,10 @@ func main() {
 
 	beginRegexMachine := regexp.MustCompile(*beginRegex)
 	endRegexMachine := regexp.MustCompile(*endRegex)
+	var operationRegexMachine *regexp.Regexp
+	if *operationRegex != "" {
+		operationRegexMachine = regexp.MustCompile(*operationRegex)
+	}
 	thresholdDuration, err := time.ParseDuration(*threshold)
 	if err != nil {
 		log.Fatalf("Illegal threshold provided, err=%v", err)
@@ -73,7 +83,8 @@ func main() {
 
 		if !ok {
 			e = Event{
-				ID: id,
+				ID:     id,
+				Slices: make([]Slice, 0),
 			}
 		}
 
@@ -85,10 +96,26 @@ func main() {
 					maxOngoing[key] = value
 				}
 			}
-			e.Begin = ts
+			operation := ""
+			if operationRegexMachine != nil {
+				matches := operationRegexMachine.FindStringSubmatch(msg)
+				if len(matches) != 2 {
+					log.Warnf("Unexpected matches in string %v: %+v", msg, matches)
+				} else {
+					operation = matches[1]
+				}
+			}
+			e.Slices = append(e.Slices, Slice{
+				Begin:     ts,
+				Operation: operation,
+			})
 		} else if endRegexMachine.FindString(msg) != "" {
 			delete(ongoing, e.ID)
-			e.End = ts
+			if len(e.Slices) == 0 {
+				log.Warnf("Event without slices encountered for ID %v", e.ID)
+			} else {
+				e.Slices[len(e.Slices)-1].End = ts
+			}
 		}
 
 		events[id] = e
@@ -119,16 +146,28 @@ func parseTs(rowIndex int, row []string, header map[string]int, fieldTs *string,
 func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, maxOngoing map[string]bool, file string) {
 	eventsToRender := make(map[string]timeline.EventView)
 	for traceID, event := range events {
-		if _, ok := maxOngoing[traceID]; !ok {
-			continue
+		slices := make([]timeline.SliceView, 0)
+		for _, slice := range event.Slices {
+			if _, ok := maxOngoing[traceID]; !ok {
+				continue
+			}
+			if slice.Begin.IsZero() || slice.End.IsZero() {
+				continue
+			}
+			slices = append(slices, timeline.SliceView{
+				Operation: slice.Operation,
+				Tooltip: fmt.Sprintf("<b>Duration</b>: %d.%d sec<br /><b>Time</b>: %s ... %s",
+					slice.End.Sub(slice.Begin).Milliseconds()/1000, slice.End.Sub(slice.Begin).Milliseconds()%1000,
+					slice.Begin.Format(TimeOnlyMs), slice.End.Format(TimeOnlyMs)),
+				Begin: slice.Begin.UnixNano() / 1000 / 1000,
+				End:   slice.End.UnixNano() / 1000 / 1000,
+			})
 		}
-		if event.Begin.IsZero() || event.End.IsZero() {
-			continue
-		}
-		eventsToRender[traceID] = timeline.EventView{
-			ID:    traceID,
-			Begin: event.Begin.UnixNano() / 1000 / 1000,
-			End:   event.End.UnixNano() / 1000 / 1000,
+		if len(slices) > 0 {
+			eventsToRender[traceID] = timeline.EventView{
+				ID:     traceID,
+				Slices: slices,
+			}
 		}
 	}
 	timeline.RenderTemplateData(templateFile, eventsToRender, file)
@@ -137,25 +176,42 @@ func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, ma
 func renderTemplateWithThreshold(templateFile *string, events map[string]Event, threshold time.Duration, file string) {
 	eventsToRender := make(map[string]timeline.EventView)
 	for traceID, event := range events {
-		if event.Begin.IsZero() || event.End.IsZero() {
-			continue
+		slices := make([]timeline.SliceView, 0)
+		for _, slice := range event.Slices {
+			if slice.Begin.IsZero() || slice.End.IsZero() {
+				continue
+			}
+			if slice.End.Sub(slice.Begin) < threshold {
+				continue
+			}
+			slices = append(slices, timeline.SliceView{
+				Operation: slice.Operation,
+				Tooltip: fmt.Sprintf("<b>Duration</b>: %d.%d sec<br /><b>Time</b>: %s ... %s",
+					slice.End.Sub(slice.Begin).Milliseconds()/1000, slice.End.Sub(slice.Begin).Milliseconds()%1000,
+					slice.Begin.Format(TimeOnlyMs), slice.End.Format(TimeOnlyMs)),
+				Begin: slice.Begin.UnixNano() / 1000 / 1000,
+				End:   slice.End.UnixNano() / 1000 / 1000,
+			})
 		}
-		if event.End.Sub(event.Begin) < threshold {
-			continue
-		}
-		eventsToRender[traceID] = timeline.EventView{
-			ID:    traceID,
-			Begin: event.Begin.UnixNano() / 1000 / 1000,
-			End:   event.End.UnixNano() / 1000 / 1000,
+		if len(slices) > 0 {
+			eventsToRender[traceID] = timeline.EventView{
+				ID:     traceID,
+				Slices: slices,
+			}
 		}
 	}
 	timeline.RenderTemplateData(templateFile, eventsToRender, file)
 }
 
 type Event struct {
-	ID    string
-	Begin time.Time
-	End   time.Time
+	ID     string
+	Slices []Slice
+}
+
+type Slice struct {
+	Operation string
+	Begin     time.Time
+	End       time.Time
 }
 
 func makeHeader(x []string, fieldId *string, fieldTs *string, fieldMessage *string) (header map[string]int) {
