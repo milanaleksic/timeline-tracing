@@ -4,7 +4,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	timeline "github.com/milanaleksic/timelinefromcsv"
+	timeline "github.com/milanaleksic/timeline-from-csv"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"regexp"
