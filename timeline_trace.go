@@ -91,36 +91,35 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 	}
 	minimalTs := eventsOrdered[0].Slices[0].Begin
 	for _, event := range eventsOrdered {
-		if len(event.Slices) > 2 {
-			return TraceFile{}, fmt.Errorf("event has multiple slices: %+v", event.Slices)
+		for _, slice := range event.Slices {
+			traceEvents = append(traceEvents, TraceEvent{
+				Name:          slice.Operation,
+				CategoriesCSV: "",
+				EventType:     Begin,
+				Timestamp:     int(slice.Begin) * 1000,
+				Tid:           iter,
+				Args: map[string]any{
+					"name":        slice.Operation,
+					"htmlTooltip": slice.Tooltip,
+					"trace_id":    event.ID,
+					"trace_url":   fmt.Sprintf("https://app.datadoghq.com/apm/trace/%s", event.ID),
+					"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
+				},
+			}, TraceEvent{
+				Name:          slice.Operation,
+				CategoriesCSV: "",
+				EventType:     End,
+				Timestamp:     int(slice.End) * 1000,
+				Tid:           iter,
+				Args: map[string]any{
+					"name":        slice.Operation,
+					"htmlTooltip": slice.Tooltip,
+					"trace_id":    event.ID,
+					"trace_url":   fmt.Sprintf("https://app.datadoghq.com/apm/trace/%s", event.ID),
+					"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
+				},
+			})
 		}
-		traceEvents = append(traceEvents, TraceEvent{
-			Name:          event.Slices[0].Operation,
-			CategoriesCSV: "",
-			EventType:     Begin,
-			Timestamp:     int(event.Slices[0].Begin) * 1000,
-			Tid:           iter,
-			Args: map[string]any{
-				"name":        event.Slices[0].Operation,
-				"htmlTooltip": event.Slices[0].Tooltip,
-				"trace_id":    event.ID,
-				"trace_url":   fmt.Sprintf("https://app.datadoghq.com/apm/trace/%s", event.ID),
-				"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
-			},
-		}, TraceEvent{
-			Name:          event.Slices[0].Operation,
-			CategoriesCSV: "",
-			EventType:     End,
-			Timestamp:     int(event.Slices[0].End) * 1000,
-			Tid:           iter,
-			Args: map[string]any{
-				"name":        event.Slices[0].Operation,
-				"htmlTooltip": event.Slices[0].Tooltip,
-				"trace_id":    event.ID,
-				"trace_url":   fmt.Sprintf("https://app.datadoghq.com/apm/trace/%s", event.ID),
-				"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
-			},
-		})
 		iter++
 	}
 	data := TraceFile{
