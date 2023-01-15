@@ -86,6 +86,9 @@ func getTraceData(eventsToRender map[string]EventView) (TraceFile, error) {
 func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 	iter := 1
 	traceEvents := make([]TraceEvent, 0)
+	if len(eventsOrdered) == 0 {
+		return TraceFile{}, nil
+	}
 	minimalTs := eventsOrdered[0].Slices[0].Begin
 	for _, event := range eventsOrdered {
 		if len(event.Slices) > 2 {

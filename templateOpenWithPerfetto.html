@@ -22,7 +22,7 @@
   function openTrace(arrayBuffer, traceUrl) {
     const win = window.open(ORIGIN);
     if (!win) {
-      window.alert('Popups blocked, click here to open the trace file');
+      window.alert('Popups blocked! Please unblock them, they are needed to open Perfetto UI');
       return;
     }
 
