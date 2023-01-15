@@ -98,7 +98,7 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 			}
 			endEventType := End
 			if slice.Async {
-				startEventType = NestableEnd
+				endEventType = NestableEnd
 			}
 			traceEvents = append(traceEvents, TraceEvent{
 				Name:          slice.Operation,
