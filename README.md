@@ -18,8 +18,14 @@ Convert logs into request timeline diagram
         which field will be used as message
   -fieldTs string
         which field will be used as timestamp
-  -templateFile string
-        which Go template file should be used to generate output, use Golang syntax: https://golang.org/pkg/time/#ParseDuration (default "template.html")
+  -format string
+        What should the output format be: html OR html-datadog OR OR trace-json OR trace-html (default "html")
+  -onlyExtreme
+        Expose only extreme case (when most ongoing traces, ignores threshold!) (default true)
+  -operationRegex string
+        regex that should extract (as the first group) the operation name
+  -outFile string
+        Where should the output timeline diagram be placed (default "output.html")
   -threshold string
         what event length is minimal to consider it (default "1s")
   -tsFormat string

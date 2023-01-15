@@ -4,7 +4,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	timeline "github.com/milanaleksic/timeline-from-csv"
+	timeline "github.com/milanaleksic/timeline-tracing"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"regexp"
@@ -14,38 +14,81 @@ import (
 )
 
 const (
-	TimeOnlyMs = "15:04:05.999"
+	timeOnlyMs        = "15:04:05.999"
+	formatTraceJson   = "trace-json"
+	formatHtmlDatadog = "html-datadog"
+	formatHtml        = "html"
 )
 
-func main() {
+var (
+	csvFile         *string
+	fieldId         *string
+	fieldTs         *string
+	tsFormat        *string
+	fieldMessage    *string
+	beginRegex      *string
+	endRegex        *string
+	threshold       *string
+	outFile         *string
+	onlyExtremeCase *bool
+	operationRegex  *string
+	format          *string
+)
 
-	csvFile := flag.String("csv", "", "input CSV file")
-	fieldId := flag.String("fieldId", "", "which field will be used as ID")
-	fieldTs := flag.String("fieldTs", "", "which field will be used as timestamp")
-	tsFormat := flag.String("tsFormat", "", "how to parse the ts field - use Golang syntax: https://golang.org/pkg/time/#Parse")
-	fieldMessage := flag.String("fieldMsg", "", "which field will be used as message")
-	beginRegex := flag.String("beginRegex", "", "regex that should have a match on beginning message")
-	endRegex := flag.String("endRegex", "", "regex that should have a match on ending message")
-	threshold := flag.String("threshold", "1s", "what event length is minimal to consider it")
+func init() {
+	csvFile = flag.String("csv", "", "input CSV file")
+	fieldId = flag.String("fieldId", "", "which field will be used as ID")
+	fieldTs = flag.String("fieldTs", "", "which field will be used as timestamp")
+	tsFormat = flag.String("tsFormat", "", "how to parse the ts field - use Golang syntax: https://golang.org/pkg/time/#Parse")
+	fieldMessage = flag.String("fieldMsg", "", "which field will be used as message")
+	beginRegex = flag.String("beginRegex", "", "regex that should have a match on beginning message")
+	endRegex = flag.String("endRegex", "", "regex that should have a match on ending message")
+	threshold = flag.String("threshold", "1s", "what event length is minimal to consider it")
 	// optional
-	templateFile := flag.String("templateFile", "template.html", "which Go template file should be used to generate output, use Golang syntax: https://golang.org/pkg/time/#ParseDuration")
-	outFile := flag.String("outFile", "output.html", "Where should the output timeline diagram be placed")
-	onlyExtremeCase := flag.Bool("onlyExtreme", true, "Expose only extreme case (when most ongoing traces, ignores threshold!)")
-	operationRegex := flag.String("operationRegex", "", "regex that should extract (as the first group) the operation name")
+	outFile = flag.String("outFile", "output.html", "Where should the output timeline diagram be placed")
+	onlyExtremeCase = flag.Bool("onlyExtreme", true, "Expose only extreme case (when most ongoing traces, ignores threshold!)")
+	operationRegex = flag.String("operationRegex", "", "regex that should extract (as the first group) the operation name")
+
+	format = flag.String("format", formatHtml, "What should the output format be: html OR html-datadog OR OR trace-json OR trace-html")
+
 	flag.Parse()
+}
 
-	file, err := os.Open(*csvFile)
-	if err != nil {
-		log.Fatalf("Failed to read the file %v: err=%v", csvFile, err)
+func main() {
+	allRows := readCSVFromFile(csvFile)
+
+	thresholdDuration, events, maxOngoing := createEvents(allRows)
+
+	// dump the extreme moment in time
+	log.Printf("Max ongoing count of operations is: %d, listing traces:", len(maxOngoing))
+	for key := range maxOngoing {
+		log.Printf("\t%s", key)
 	}
-	defer file.Close()
 
-	reader := csv.NewReader(file)
-	allRows, err := reader.ReadAll()
-	if err != nil {
-		log.Fatalf("Failed to read as CSV the file %v: err=%v", csvFile, err)
+	var eventsToRender map[string]timeline.EventView
+	if *onlyExtremeCase {
+		eventsToRender = renderTemplateOnlyExtreme(events, maxOngoing)
+	} else {
+		eventsToRender = renderTemplateWithThreshold(events, thresholdDuration)
 	}
 
+	switch *format {
+	case formatHtmlDatadog:
+		if err := timeline.RenderHTMLDatadogTemplateData(eventsToRender, *outFile); err != nil {
+			log.Fatalf("Error while processing HTML template: %+v", err)
+		}
+	case formatHtml:
+		if err := timeline.RenderHTMLTemplateData(eventsToRender, *outFile); err != nil {
+			log.Fatalf("Error while processing HTML template: %+v", err)
+		}
+	case formatTraceJson:
+		if err := timeline.RenderTraceTemplateData(eventsToRender, *outFile); err != nil {
+			log.Fatalf("Error while processing trace: %+v", err)
+		}
+	}
+}
+
+func createEvents(allRows [][]string) (time.Duration, map[string]Event, map[string]bool) {
 	beginRegexMachine := regexp.MustCompile(*beginRegex)
 	endRegexMachine := regexp.MustCompile(*endRegex)
 	var operationRegexMachine *regexp.Regexp
@@ -120,18 +163,22 @@ func main() {
 
 		events[id] = e
 	}
+	return thresholdDuration, events, maxOngoing
+}
 
-	// dump the extreme moment in time
-	log.Printf("Max ongoing count of operations is: %d, listing traces:", len(maxOngoing))
-	for key := range maxOngoing {
-		log.Printf("\t%s", key)
+func readCSVFromFile(csvFile *string) [][]string {
+	file, err := os.Open(*csvFile)
+	if err != nil {
+		log.Fatalf("Failed to read the file %v: err=%v", csvFile, err)
 	}
+	defer file.Close()
 
-	if *onlyExtremeCase {
-		renderTemplateOnlyExtreme(templateFile, events, maxOngoing, *outFile)
-	} else {
-		renderTemplateWithThreshold(templateFile, events, thresholdDuration, *outFile)
+	reader := csv.NewReader(file)
+	allRows, err := reader.ReadAll()
+	if err != nil {
+		log.Fatalf("Failed to read as CSV the file %v: err=%v", csvFile, err)
 	}
+	return allRows
 }
 
 func parseTs(rowIndex int, row []string, header map[string]int, fieldTs *string, tsFormat *string) time.Time {
@@ -143,7 +190,7 @@ func parseTs(rowIndex int, row []string, header map[string]int, fieldTs *string,
 	return tsIParsed
 }
 
-func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, maxOngoing map[string]bool, file string) {
+func renderTemplateOnlyExtreme(events map[string]Event, maxOngoing map[string]bool) map[string]timeline.EventView {
 	eventsToRender := make(map[string]timeline.EventView)
 	for traceID, event := range events {
 		slices := make([]timeline.SliceView, 0)
@@ -158,7 +205,7 @@ func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, ma
 				Operation: slice.Operation,
 				Tooltip: fmt.Sprintf("<b>Duration</b>: %d.%d sec<br /><b>Time</b>: %s ... %s",
 					slice.End.Sub(slice.Begin).Milliseconds()/1000, slice.End.Sub(slice.Begin).Milliseconds()%1000,
-					slice.Begin.Format(TimeOnlyMs), slice.End.Format(TimeOnlyMs)),
+					slice.Begin.Format(timeOnlyMs), slice.End.Format(timeOnlyMs)),
 				Begin: slice.Begin.UnixNano() / 1000 / 1000,
 				End:   slice.End.UnixNano() / 1000 / 1000,
 			})
@@ -170,10 +217,10 @@ func renderTemplateOnlyExtreme(templateFile *string, events map[string]Event, ma
 			}
 		}
 	}
-	timeline.RenderTemplateData(templateFile, eventsToRender, file)
+	return eventsToRender
 }
 
-func renderTemplateWithThreshold(templateFile *string, events map[string]Event, threshold time.Duration, file string) {
+func renderTemplateWithThreshold(events map[string]Event, threshold time.Duration) map[string]timeline.EventView {
 	eventsToRender := make(map[string]timeline.EventView)
 	for traceID, event := range events {
 		slices := make([]timeline.SliceView, 0)
@@ -188,7 +235,7 @@ func renderTemplateWithThreshold(templateFile *string, events map[string]Event, 
 				Operation: slice.Operation,
 				Tooltip: fmt.Sprintf("<b>Duration</b>: %d.%d sec<br /><b>Time</b>: %s ... %s",
 					slice.End.Sub(slice.Begin).Milliseconds()/1000, slice.End.Sub(slice.Begin).Milliseconds()%1000,
-					slice.Begin.Format(TimeOnlyMs), slice.End.Format(TimeOnlyMs)),
+					slice.Begin.Format(timeOnlyMs), slice.End.Format(timeOnlyMs)),
 				Begin: slice.Begin.UnixNano() / 1000 / 1000,
 				End:   slice.End.UnixNano() / 1000 / 1000,
 			})
@@ -200,7 +247,7 @@ func renderTemplateWithThreshold(templateFile *string, events map[string]Event, 
 			}
 		}
 	}
-	timeline.RenderTemplateData(templateFile, eventsToRender, file)
+	return eventsToRender
 }
 
 type Event struct {

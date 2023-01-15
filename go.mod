@@ -1,4 +1,4 @@
-module github.com/milanaleksic/timeline-from-csv
+module github.com/milanaleksic/timeline-tracing
 
 go 1.18
 
