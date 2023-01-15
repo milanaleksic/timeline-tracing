@@ -92,33 +92,12 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 	minimalTs := eventsOrdered[0].Slices[0].Begin
 	for _, event := range eventsOrdered {
 		for i, slice := range event.Slices {
-			startEventType := Begin
-			if slice.Async {
-				startEventType = NestableStart
-			}
-			endEventType := End
-			if slice.Async {
-				endEventType = NestableEnd
-			}
 			traceEvents = append(traceEvents, TraceEvent{
 				Name:          slice.Operation,
 				CategoriesCSV: "",
-				EventType:     startEventType,
+				EventType:     CompleteEvent,
 				Timestamp:     int(slice.Begin) * 1000,
-				Tid:           iter,
-				ID:            i,
-				Args: map[string]any{
-					"name":        slice.Operation,
-					"htmlTooltip": slice.Tooltip,
-					"trace_id":    event.ID,
-					"trace_url":   fmt.Sprintf("https://app.datadoghq.com/apm/trace/%s", event.ID),
-					"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
-				},
-			}, TraceEvent{
-				Name:          slice.Operation,
-				CategoriesCSV: "",
-				EventType:     endEventType,
-				Timestamp:     int(slice.End) * 1000,
+				Duration:      int(slice.End-slice.Begin) * 1000,
 				Tid:           iter,
 				ID:            i,
 				Args: map[string]any{
@@ -129,8 +108,8 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 					"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
 				},
 			})
+			iter++
 		}
-		iter++
 	}
 	data := TraceFile{
 		TraceEvents:     traceEvents,
@@ -153,12 +132,7 @@ func orderEventsByStartTs(eventsToRender map[string]EventView) []EventView {
 type EventType string
 
 const (
-	Begin           EventType = "B"
-	End             EventType = "E"
-	CompleteEvent   EventType = "X"
-	NestableStart   EventType = "b"
-	NestableInstant EventType = "n"
-	NestableEnd     EventType = "e"
+	CompleteEvent EventType = "X"
 )
 
 type TraceEvent struct {
@@ -166,6 +140,7 @@ type TraceEvent struct {
 	CategoriesCSV string         `json:"cat"`
 	EventType     EventType      `json:"ph"`
 	Timestamp     int            `json:"ts"`
+	Duration      int            `json:"dur"`
 	Pid           int            `json:"pid"`
 	Tid           int            `json:"tid"`
 	Args          map[string]any `json:"args"`
