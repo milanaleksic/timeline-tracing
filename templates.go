@@ -8,7 +8,7 @@ import (
 
 //go:embed templateDatadogTraceLink.html
 //go:embed template.html
-//go:embed openWithPerfetto.html
+//go:embed templateOpenWithPerfetto.html
 var embeddedData embed.FS
 
 type templateName string
@@ -16,6 +16,7 @@ type templateName string
 const (
 	templateDatadogHtml templateName = "templateDatadogTraceLink.html"
 	templateHtml        templateName = "template.html"
+	templateTraceHtml   templateName = "templateOpenWithPerfetto.html"
 )
 
 func loadTemplate(templateName templateName) (*template.Template, error) {

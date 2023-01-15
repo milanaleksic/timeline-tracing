@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	timeOnlyMs        = "15:04:05.999"
-	formatTraceJson   = "trace-json"
-	formatHtmlDatadog = "html-datadog"
-	formatHtml        = "html"
+	timeOnlyMs          = "15:04:05.999"
+	formatHtml          = "html"
+	formatHtmlDatadog   = "html-datadog"
+	formatTraceJson     = "trace-json"
+	formatTracePerfetto = "trace-perfetto"
 )
 
 var (
@@ -49,7 +50,7 @@ func init() {
 	onlyExtremeCase = flag.Bool("onlyExtreme", true, "Expose only extreme case (when most ongoing traces, ignores threshold!)")
 	operationRegex = flag.String("operationRegex", "", "regex that should extract (as the first group) the operation name")
 
-	format = flag.String("format", formatHtml, "What should the output format be: html OR html-datadog OR OR trace-json OR trace-html")
+	format = flag.String("format", formatHtml, "What should the output format be: html OR html-datadog OR OR trace-json OR trace-perfetto")
 
 	flag.Parse()
 }
@@ -82,9 +83,15 @@ func main() {
 			log.Fatalf("Error while processing HTML template: %+v", err)
 		}
 	case formatTraceJson:
-		if err := timeline.RenderTraceTemplateData(eventsToRender, *outFile); err != nil {
+		if err := timeline.GenerateTraceTemplateData(eventsToRender, *outFile); err != nil {
 			log.Fatalf("Error while processing trace: %+v", err)
 		}
+	case formatTracePerfetto:
+		if err := timeline.RenderTracePerfettoTemplateData(eventsToRender, *outFile); err != nil {
+			log.Fatalf("Error while processing trace: %+v", err)
+		}
+	default:
+		log.Fatalf("Unknown format: %+v", *format)
 	}
 }
 

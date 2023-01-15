@@ -4,32 +4,83 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"sort"
 )
 
-func RenderTraceTemplateData(eventsToRender map[string]EventView, outputFilePath string) error {
-	eventsOrdered := orderEventsByStartTs(eventsToRender)
-	data, err := convertToTraceEvents(eventsOrdered)
+func RenderTracePerfettoTemplateData(eventsToRender map[string]EventView, outputFilePath string) error {
+	t, err := loadTemplate(templateTraceHtml)
 	if err != nil {
-		return fmt.Errorf("failed to convert to trace events: %w", err)
+		return err
 	}
-	err = writeToFile(data, outputFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to write trace events: %w", err)
-	}
-	return nil
-}
 
-func writeToFile(data TraceFile, outputFilePath string) error {
+	data, err := getTraceData(eventsToRender)
+	if err != nil {
+		return err
+	}
+
 	marshal, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to generate output: %w", err)
 	}
-	err = ioutil.WriteFile(outputFilePath, marshal, 0666)
-	if err != nil {
-		return fmt.Errorf("failed to write output file: %w", err)
+
+	templateData := map[string]any{
+		"Data": string(marshal),
+	}
+
+	if outputFilePath == "" {
+		err := t.Execute(os.Stdout, templateData)
+		if err != nil {
+			return fmt.Errorf("failed to fill the template: %w", err)
+		}
+	} else {
+		openFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to write to the output file %v: %w", outputFilePath, err)
+		}
+		defer openFile.Close()
+
+		err = t.Execute(openFile, templateData)
+		if err != nil {
+			return fmt.Errorf("failed to fill the template: %w", err)
+		}
 	}
 	return nil
+}
+
+func GenerateTraceTemplateData(eventsToRender map[string]EventView, outputFilePath string) error {
+	data, err := getTraceData(eventsToRender)
+	if err != nil {
+		return err
+	}
+
+	marshal, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to generate output: %w", err)
+	}
+
+	if outputFilePath == "" {
+		_, err = os.Stdout.Write(marshal)
+		if err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+	} else {
+		err = ioutil.WriteFile(outputFilePath, marshal, 0666)
+		if err != nil {
+			return fmt.Errorf("failed to write output file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func getTraceData(eventsToRender map[string]EventView) (TraceFile, error) {
+	eventsOrdered := orderEventsByStartTs(eventsToRender)
+	data, err := convertToTraceEvents(eventsOrdered)
+	if err != nil {
+		return TraceFile{}, fmt.Errorf("failed to convert to trace events: %w", err)
+	}
+	return data, nil
 }
 
 func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {

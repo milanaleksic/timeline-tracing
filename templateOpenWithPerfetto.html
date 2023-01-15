@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en-us">
+<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+<body>
+
+<p>Opening the trace in a separate window... (please allow popups)</p>
+
+<script type="text/javascript">
+  const ORIGIN = 'https://ui.perfetto.dev';
+
+  function str2ab(str) {
+    var buf = new ArrayBuffer(str.length); // 2 bytes for each char
+    var bufView = new Uint8Array(buf);
+    for (var i=0, strLen=str.length; i<strLen; i++) {
+      bufView[i] = str.charCodeAt(i);
+    }
+    return buf;
+  }
+
+  data = {{ $.Data }};
+
+  function openTrace(arrayBuffer, traceUrl) {
+    const win = window.open(ORIGIN);
+    if (!win) {
+      window.alert('Popups blocked, click here to open the trace file');
+      return;
+    }
+
+    const timer = setInterval(() => win.postMessage('PING', ORIGIN), 50);
+
+    const onMessageHandler = (evt) => {
+      if (evt.data !== 'PONG') return;
+
+      // We got a PONG, the UI is ready.
+      window.clearInterval(timer);
+      window.removeEventListener('message', onMessageHandler);
+
+      win.postMessage({
+        perfetto: {
+          buffer: arrayBuffer,
+          title: 'Timeline-Trace',
+          url: location.href,
+        }}, ORIGIN);
+    };
+
+    window.addEventListener('message', onMessageHandler);
+  }
+
+  window.onload = () => openTrace(str2ab(data), "trace.json");
+</script>
+</body>
+</html>
