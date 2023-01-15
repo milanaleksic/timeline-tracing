@@ -84,22 +84,23 @@ func getTraceData(eventsToRender map[string]EventView) (TraceFile, error) {
 }
 
 func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
-	iter := 1
+	iterThreadId := 1
+	iterSliceId := 1
 	traceEvents := make([]TraceEvent, 0)
 	if len(eventsOrdered) == 0 {
 		return TraceFile{}, nil
 	}
 	minimalTs := eventsOrdered[0].Slices[0].Begin
 	for _, event := range eventsOrdered {
-		for i, slice := range event.Slices {
+		for _, slice := range event.Slices {
 			traceEvents = append(traceEvents, TraceEvent{
 				Name:          slice.Operation,
 				CategoriesCSV: "",
 				EventType:     CompleteEvent,
 				Timestamp:     int(slice.Begin) * 1000,
 				Duration:      int(slice.End-slice.Begin) * 1000,
-				Tid:           iter,
-				ID:            i,
+				Tid:           iterThreadId,
+				ID:            iterSliceId,
 				Args: map[string]any{
 					"name":        slice.Operation,
 					"htmlTooltip": slice.Tooltip,
@@ -108,8 +109,9 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 					"logs_url":    fmt.Sprintf("https://app.datadoghq.com/logs?query=trace_id%%3A%v&from_ts=%v", event.ID, minimalTs),
 				},
 			})
-			iter++
+			iterSliceId++
 		}
+		iterThreadId++
 	}
 	data := TraceFile{
 		TraceEvents:     traceEvents,
