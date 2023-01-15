@@ -66,6 +66,7 @@ type SliceView struct {
 	Tooltip   string
 	Begin     int64
 	End       int64
+	Async     bool
 }
 
 type TemplateData struct {

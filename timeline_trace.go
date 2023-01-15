@@ -91,13 +91,22 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 	}
 	minimalTs := eventsOrdered[0].Slices[0].Begin
 	for _, event := range eventsOrdered {
-		for _, slice := range event.Slices {
+		for i, slice := range event.Slices {
+			startEventType := Begin
+			if slice.Async {
+				startEventType = NestableStart
+			}
+			endEventType := End
+			if slice.Async {
+				startEventType = NestableEnd
+			}
 			traceEvents = append(traceEvents, TraceEvent{
 				Name:          slice.Operation,
 				CategoriesCSV: "",
-				EventType:     Begin,
+				EventType:     startEventType,
 				Timestamp:     int(slice.Begin) * 1000,
 				Tid:           iter,
+				ID:            i,
 				Args: map[string]any{
 					"name":        slice.Operation,
 					"htmlTooltip": slice.Tooltip,
@@ -108,9 +117,10 @@ func convertToTraceEvents(eventsOrdered []EventView) (TraceFile, error) {
 			}, TraceEvent{
 				Name:          slice.Operation,
 				CategoriesCSV: "",
-				EventType:     End,
+				EventType:     endEventType,
 				Timestamp:     int(slice.End) * 1000,
 				Tid:           iter,
+				ID:            i,
 				Args: map[string]any{
 					"name":        slice.Operation,
 					"htmlTooltip": slice.Tooltip,
@@ -143,9 +153,12 @@ func orderEventsByStartTs(eventsToRender map[string]EventView) []EventView {
 type EventType string
 
 const (
-	Begin         EventType = "B"
-	End           EventType = "E"
-	CompleteEvent           = "X"
+	Begin           EventType = "B"
+	End             EventType = "E"
+	CompleteEvent   EventType = "X"
+	NestableStart   EventType = "b"
+	NestableInstant EventType = "n"
+	NestableEnd     EventType = "e"
 )
 
 type TraceEvent struct {
@@ -156,6 +169,9 @@ type TraceEvent struct {
 	Pid           int            `json:"pid"`
 	Tid           int            `json:"tid"`
 	Args          map[string]any `json:"args"`
+
+	// for async events
+	ID int `json:"id"`
 }
 
 type TraceFile struct {
